@@ -1,0 +1,33 @@
+{
+  "name": "aether-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aether AI — independent reasoning agent (text-only). Not FounderOS.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "dev:api": "tsx watch src/server.ts",
+    "start:api": "node dist/server.js",
+    "chat": "node chat-simple.mjs",
+    "chat:full": "tsx src/cli-chat.ts",
+    "say": "tsx scripts/say.ts",
+    "train": "tsx src/train.ts",
+    "train:loop": "tsx src/train-loop.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "hono": "^4.6.12",
+    "@hono/node-server": "^1.13.7",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
