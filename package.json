@@ -15,6 +15,8 @@
     "say": "tsx scripts/say.ts",
     "train": "tsx src/train.ts",
     "train:loop": "tsx src/train-loop.ts",
+    "live:fire": "node scripts/fire-live-strategic.mjs",
+    "live:loop": "node scripts/live-fire-loop.mjs",
     "push": "node scripts/push-github.mjs"
   },
   "engines": {
