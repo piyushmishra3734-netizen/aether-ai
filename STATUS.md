@@ -1,6 +1,6 @@
 # Aether AI — live status
 
-**Readiness: A1_ready / operational** (updated continue pass)
+**Readiness: G1_grok_aligned / continuous train** (35/35 multi-part gym)
 
 ## Paths
 
