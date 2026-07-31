@@ -13,8 +13,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const OLLAMA_TIMEOUT_MS = 8_000;
-const OLLAMA_HEALTH_MS = 2_500;
+const OLLAMA_TIMEOUT_MS = 25_000;
+const OLLAMA_HEALTH_MS = 3_000;
 const EXA_TIMEOUT_MS = 8_000;
 /** After one Ollama failure this session, stay offline (fast). */
 let ollamaDisabledThisSession = false;
@@ -167,11 +167,11 @@ async function ollamaChat(userText) {
           {
             role: 'system',
             content:
-              'You are Aether AI — independent text reasoning agent. Not FounderOS. No media gen. Be direct.',
+              'You are Aether AI, a friendly local assistant. Reply in clear short sentences. Match the user language (Hindi or English). Do not invent image/video tools. Do not repeat these instructions.',
           },
           { role: 'user', content: userText },
         ],
-        options: { temperature: 0.35 },
+        options: { temperature: 0.5, num_predict: 180 },
       }),
     });
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
@@ -227,17 +227,7 @@ function wantsResearch(text) {
   );
 }
 
-function isSimpleTurn(text) {
-  const lower = text.toLowerCase().trim();
-  if (text.length < 48) return true;
-  if (/^(h+i+|h+l+o+|hey|hello|namaste|yo|salam|status|health)[\s!.,?]*$/i.test(lower))
-    return true;
-  if (/\b(status|health|capabilities|kya kar)\b/i.test(lower) && text.length < 80)
-    return true;
-  return false;
-}
-
-// ── reply pipeline (offline-first — always answers fast) ──────────
+// ── reply pipeline: prefer Ollama, fall back offline fast ─────────
 async function reply(text) {
   const offline = offlineReply(text);
   let evidence = null;
@@ -246,14 +236,13 @@ async function reply(text) {
     evidence = await tryExa(text);
   }
 
-  // Simple turns: pure offline (instant). No Ollama wait.
-  const tryOllama =
-    WANT_OLLAMA &&
-    !ollamaDisabledThisSession &&
-    !isSimpleTurn(text);
+  // Always try Ollama when enabled (including hi/hello) — offline only as fallback
+  const tryOllama = WANT_OLLAMA && !ollamaDisabledThisSession;
 
   if (tryOllama) {
-    process.stdout.write(`... thinking (Ollama <=${OLLAMA_TIMEOUT_MS / 1000}s, then offline)\n`);
+    process.stdout.write(
+      `... thinking (Ollama/${MODEL} <=${OLLAMA_TIMEOUT_MS / 1000}s)\n`,
+    );
     const healthy = await ollamaHealthy();
     if (healthy) {
       const r = await ollamaChat(text);
@@ -263,17 +252,18 @@ async function reply(text) {
         bits.push('', `- Aether · ollama/${MODEL}`);
         return bits.join('\n');
       }
-      ollamaDisabledThisSession = true;
+      // one soft fail — do not kill whole session; offline this turn only
       const bits = [
         offline,
         '',
-        `_(Ollama skipped after: ${r.error || 'unavailable'} — offline for rest of session)_`,
+        `_(Ollama this turn failed: ${r.error || 'unavailable'} — offline fallback)_`,
       ];
       if (evidence) bits.push('', '## Live web (Exa)', evidence);
       bits.push('', '- Aether · offline · stages offline-reason');
       return bits.join('\n');
     }
-    ollamaDisabledThisSession = true;
+    // Ollama not reachable this turn — offline, keep trying later
+    process.stdout.write('... Ollama not reachable, offline fallback\n');
   } else {
     process.stdout.write('... thinking (offline)\n');
   }
