@@ -51,6 +51,18 @@ export function offlineReason(opts: {
       .join('\n');
   }
 
+  const lower = intent.normalizedText.toLowerCase();
+  if (
+    /\b(tera|tumhara|your)\s*(naam|name)\b/i.test(lower) ||
+    /\b(who\s+are\s+you|naam\s*b(ata|ta))\b/i.test(lower)
+  ) {
+    return 'Mera naam **Aether AI** hai. Local text assistant — image/video nahi banata. Bol kya chahiye.';
+  }
+  if (
+    /\b(kais[ae]\s*ho|kaisa\s*hai|how\s+are\s+you|kya\s*haal)\b/i.test(lower)
+  ) {
+    return 'Main theek hoon, ready. Tu bata — kya scene hai?';
+  }
   if (intent.kind === 'chat' && intent.normalizedText.length < 40) {
     return `Hey — Aether AI here. Ask anything (text): research, OSINT, plans, decisions, code. Memory: ${memoryBrief}`;
   }

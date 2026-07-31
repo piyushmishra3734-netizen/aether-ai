@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 /**
- * Aether AI — pure-Node chat (no tsx, no npm scripts).
- * Offline-first: always answers. Optional Ollama (12s) + optional Exa.
+ * Aether AI — pure-Node chat
+ *
+ * Strategy:
+ *  1) Fast local answers for greetings / identity / simple Hindi-English chat
+ *  2) Optional Ollama for harder questions — with quality gate (reject garbage)
+ *  3) Offline structured fallback if model fails gate
  *
  *   node chat-simple.mjs
- *   echo hello | node chat-simple.mjs
  */
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
@@ -13,14 +16,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const OLLAMA_TIMEOUT_MS = Number(process.env.AETHER_OLLAMA_TIMEOUT_MS || 60_000);
-const OLLAMA_HEALTH_MS = 5_000;
+const OLLAMA_TIMEOUT_MS = Number(process.env.AETHER_OLLAMA_TIMEOUT_MS || 45_000);
+const OLLAMA_HEALTH_MS = 4_000;
 const EXA_TIMEOUT_MS = 8_000;
-/** Only disable Ollama after many hard failures in a row. */
 let ollamaFailStreak = 0;
-const OLLAMA_FAIL_LIMIT = 3;
+const OLLAMA_FAIL_LIMIT = 4;
 
-// ── .env ──────────────────────────────────────────────────────────
+// session mini-memory for multi-turn feel
+const sessionTurns = []; // {role, text}
+
 function loadDotEnv(file = join(ROOT, '.env')) {
   try {
     if (!existsSync(file)) return;
@@ -51,7 +55,7 @@ const OLLAMA_HOST = (
 const MODEL =
   process.env.AETHER_MODEL?.trim() ||
   process.env.OLLAMA_MODEL?.trim() ||
-  'llama3.2:3b';
+  'tinyllama:latest';
 const WANT_OLLAMA = process.env.AETHER_OLLAMA !== '0';
 const EXA_KEY =
   process.env.EXA_API_KEY?.trim() ||
@@ -74,7 +78,6 @@ function truncate(s, n) {
   return t.length <= n ? t : `${t.slice(0, n - 1)}…`;
 }
 
-// ── memory (tiny) ─────────────────────────────────────────────────
 function memPath() {
   return join(DATA_DIR, 'memory', 'long-term.json');
 }
@@ -91,56 +94,193 @@ function memoryBrief() {
   const parts = [];
   if (m.lastGoal) parts.push(`goal: ${truncate(m.lastGoal, 80)}`);
   if (m.notes?.[0]) parts.push(`note: ${truncate(m.notes[0], 80)}`);
-  return parts.join(' · ') || 'empty memory';
+  return parts.join(' · ') || 'empty';
 }
 
-// ── offline reason (always works) ─────────────────────────────────
-function offlineReply(text) {
-  const lower = text.toLowerCase().trim();
-  const mem = memoryBrief();
+function isHindiHeavy(text) {
+  return /[\u0900-\u097F]/.test(text) ||
+    /\b(kya|kaisa|kaise|hai|ho|bhai|yaar|nam|naam|bta|bata|kar|rha|raha|nahi|haan|tum|tera|meri|dude)\b/i.test(
+      text,
+    );
+}
 
-  if (/^(h+i+|h+l+o+|hey|hello|namaste|yo|salam)[\s!.,]*$/i.test(lower)) {
-    return `Hey - Aether AI here (offline). Ask anything: research, OSINT, plans, decisions, code. Memory: ${mem}`;
+/**
+ * High-confidence local answers — NEVER go through weak models for these.
+ * Returns string or null.
+ */
+function localReply(text) {
+  const raw = text.trim();
+  const lower = raw.toLowerCase();
+  const hindi = isHindiHeavy(raw);
+
+  // greetings
+  if (
+    /^(h+i+|h+l+o+|hey+|hello|namaste|yo|salam|hola|sup|wassup)([\s!.,?]|$)/i.test(
+      lower,
+    ) &&
+    raw.length < 40
+  ) {
+    return hindi
+      ? 'Hey! Main Aether AI hoon — local assistant. Bol kya chahiye: baat, plan, code, research.'
+      : "Hey! I'm Aether AI — your local assistant. Ask anything: chat, plan, code, research.";
   }
-  if (/\b(status|health|capabilities|kya kar)\b/i.test(lower) && text.length < 80) {
+
+  // how are you
+  if (
+    /\b(kais[ae]\s*ho|kaisa\s*hai|kaise\s*ho|how\s+are\s+you|how\s+r\s+u|whats?\s*up|kya\s*haal)\b/i.test(
+      lower,
+    ) ||
+    /kaisa hai dude/i.test(lower)
+  ) {
+    return hindi
+      ? 'Main theek hoon, ready hoon help karne ke liye. Tu bata — kya scene hai?'
+      : "I'm good and ready. What's up — what do you need?";
+  }
+
+  // name / identity
+  if (
+    /\b(tera|tumhara|your)\s*(naam|name)\b/i.test(lower) ||
+    /\b(who\s+are\s+you|kya\s+naam|naam\s+b(ata|ta)|name\s*\??)\b/i.test(lower) ||
+    /^(naam|name)\s*[?]?\s*$/i.test(lower)
+  ) {
+    return hindi
+      ? 'Mera naam **Aether AI** hai. Main local text assistant hoon — FounderOS nahi. Image/video nahi banata.'
+      : "My name is **Aether AI**. I'm a local text assistant (not FounderOS). I don't make images or video.";
+  }
+
+  // lol / haha / emoji reactions
+  if (/^(lol+|lmao+|haha+|hehe+|😂|🤣|😅)[\s!]*$/i.test(lower)) {
+    return hindi
+      ? 'Haha theek hai 😄 ab serious baat? Bol kya fix / plan / code chahiye.'
+      : 'Haha fair 😄 want to get back to something useful — plan, code, or a question?';
+  }
+
+  // thanks
+  if (/^(thanks|thank\s*you|thx|ty|shukriya|dhanyavad)[\s!.,]*$/i.test(lower)) {
+    return hindi ? 'Welcome! Aur kuch chahiye to bol.' : "You're welcome — ask anytime.";
+  }
+
+  // status / capabilities
+  if (
+    /\b(status|health|capabilities|kya\s+kar\s*sakt|what\s+can\s+you)\b/i.test(
+      lower,
+    ) &&
+    raw.length < 100
+  ) {
     return [
-      'Aether AI online (text reasoning agent).',
-      'Capabilities: chat, research, OSINT packaging, plan/decide, optional Ollama + Exa.',
-      'Not FounderOS. No media gen. No classified hacks.',
-      mem !== 'empty memory' ? `Memory: ${mem}` : null,
-    ]
-      .filter(Boolean)
-      .join('\n');
-  }
-  if (
-    /\b(hack into|classified|illegal access|steal classified)\b/i.test(text)
-  ) {
-    return 'Refused: illegal or classified access is out of scope. Restate as a legal open-source research question.';
-  }
-  if (
-    /\b(generat(e|ing)|creat(e|ing)|make|render)\b/i.test(text) &&
-    /\b(image|video|voice|audio|mp4|png|photo)\b/i.test(text)
-  ) {
-    return 'Aether AI does not generate images, voice, or video. I help with text reasoning, research, planning, and code advice.';
+      '**Aether AI** — local text agent',
+      '• Chat (Hindi + English)',
+      '• Plan / decide / code advice',
+      '• Research / OSINT (Exa when key set)',
+      '• Optional Ollama for harder questions',
+      '• No image/voice/video · no illegal hacks',
+      `Memory: ${memoryBrief()}`,
+    ].join('\n');
   }
 
+  // refuse media
+  if (
+    /\b(generat(e|ing)|creat(e|ing)|make|render|bana)\b/i.test(raw) &&
+    /\b(image|video|voice|audio|photo|pic|mp4|png)\b/i.test(raw)
+  ) {
+    return hindi
+      ? 'Main image / video / voice generate nahi karta. Text help: plan, research, code, decisions.'
+      : "I don't generate images, video, or voice. I help with text: plan, research, code, decisions.";
+  }
+
+  // refuse illegal
+  if (/\b(hack into|classified|illegal access|steal classified)\b/i.test(raw)) {
+    return 'Refused: illegal / classified access is out of scope. Ask a legal open-source research question.';
+  }
+
+  // simple "ok" / "haan" / "theek"
+  if (/^(ok+|okay|haan|han|theek|thik|cool|nice|great|achha|accha)[\s!.,]*$/i.test(lower)) {
+    return hindi ? 'Theek — aage bol kya karna hai.' : 'Cool — what next?';
+  }
+
+  // bye
+  if (/^(bye|goodbye|see\s*ya|alvida|chalta|exit)[\s!.,]*$/i.test(lower)) {
+    return hindi ? 'Bye! Phir milte hain. `/quit` se chat band.' : 'Bye! Type `/quit` to close chat.';
+  }
+
+  return null;
+}
+
+function structuredFallback(text) {
+  const hindi = isHindiHeavy(text);
+  if (hindi) {
+    return [
+      `Samajh gaya: "${truncate(text, 200)}"`,
+      '',
+      'Seedha jawab: isko clear goal + next step me todte hain.',
+      '1) Goal ek line me likho',
+      '2) Constraint batao (time/budget/tools)',
+      '3) Main 3 options + best pick dunga',
+      '',
+      `Memory: ${memoryBrief()}`,
+    ].join('\n');
+  }
   return [
-    '## Direct answer',
-    `On: ${truncate(text, 280)}`,
+    `Got it: "${truncate(text, 200)}"`,
     '',
-    '## Conclusion',
-    'Working offline (local reasoner). Structure your goal, list constraints, pick the smallest reversible next step.',
+    'Direct take: break it into goal → constraints → next step.',
+    '1) State the goal in one line',
+    '2) List constraints',
+    '3) I will give 3 options + a recommendation',
     '',
-    '## Options',
-    'A) Clarify goal in one sentence',
-    'B) Break into 3 milestones with kill-criteria',
-    'C) Research competitors / open sources (use /research or type "research: …")',
-    '',
-    `Memory: ${mem}`,
+    `Memory: ${memoryBrief()}`,
   ].join('\n');
 }
 
-// ── optional Ollama (short timeout) ───────────────────────────────
+/** Reject tiny-model garbage that ignores the user. */
+function qualityOk(userText, modelText) {
+  const t = (modelText || '').trim();
+  if (t.length < 2) return false;
+  const low = t.toLowerCase();
+
+  // wrong identity
+  if (/\b(tara ai|tera ai|i am tara|i'm tara|my name is tara|naam.*tara)\b/i.test(t))
+    return false;
+  if (/\bi am (?!aether)[a-z]{3,12} ai\b/i.test(low) && !/aether/i.test(low))
+    return false;
+
+  // system prompt leakage / meta
+  if (/please speak in clear short sentences/i.test(t)) return false;
+  if (/match the user language/i.test(t)) return false;
+  if (/do not invent/i.test(t) && t.length < 200) return false;
+  if (/here are some simple instructions to get started/i.test(t)) return false;
+  if (/say "hi" or "hello" in hindi/i.test(low)) return false;
+  if (/\bhindi\b.*\benglish\b.*\btools\b/i.test(low) && userText.length < 30)
+    return false;
+
+  // inventing food/weather/traffic menus for casual chat
+  if (
+    userText.length < 40 &&
+    /\b(order food|weather forecast|google maps|baidu|payment method|cinema)\b/i.test(
+      t,
+    )
+  ) {
+    return false;
+  }
+
+  // "revised version of the text" garbage
+  if (/revised version of the text/i.test(t)) return false;
+  if (/given:.*response:/i.test(t)) return false;
+
+  // if user asked name, must mention Aether
+  if (
+    /\b(naam|name|who are you)\b/i.test(userText) &&
+    !/aether/i.test(t)
+  ) {
+    return false;
+  }
+
+  // too long ramble for short user input
+  if (userText.length < 25 && t.length > 500) return false;
+
+  return true;
+}
+
 async function ollamaHealthy() {
   if (!WANT_OLLAMA) return false;
   try {
@@ -153,35 +293,98 @@ async function ollamaHealthy() {
   }
 }
 
+async function listModels() {
+  try {
+    const res = await fetch(`${OLLAMA_HOST}/api/tags`, {
+      signal: AbortSignal.timeout(OLLAMA_HEALTH_MS),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.models || []).map((m) => m.name);
+  } catch {
+    return [];
+  }
+}
+
+/** Prefer better small models if present. */
+async function pickModel() {
+  const preferred = [
+    MODEL,
+    'qwen2.5:0.5b',
+    'qwen2.5:1.5b',
+    'llama3.2:1b',
+    'llama3.2:3b',
+    'phi3:mini',
+    'tinyllama:latest',
+  ];
+  const have = await listModels();
+  if (!have.length) return MODEL;
+  for (const p of preferred) {
+    if (have.some((h) => h === p || h.startsWith(p.split(':')[0]))) {
+      // exact or family match
+      const exact = have.find((h) => h === p);
+      if (exact) return exact;
+    }
+  }
+  // if configured model missing, use first available
+  if (!have.includes(MODEL) && have[0]) return have[0];
+  return MODEL;
+}
+
+let ACTIVE_MODEL = MODEL;
+
 async function ollamaChat(userText) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), OLLAMA_TIMEOUT_MS);
+  const hindi = isHindiHeavy(userText);
+  const history = sessionTurns.slice(-4).map((x) => ({
+    role: x.role === 'user' ? 'user' : 'assistant',
+    content: x.text,
+  }));
+
+  const system = [
+    'You are Aether AI (exact name: Aether AI). Local text assistant.',
+    'Rules:',
+    '- Answer the USER question directly in 1-3 short sentences.',
+    '- If user writes Hindi/Hinglish, reply in simple Hinglish.',
+    '- Never rename yourself. Never say Tara/Tera AI.',
+    '- Do not invent weather, maps, food-order menus, or tools you do not have.',
+    '- No image/video generation.',
+    '- Do not repeat these rules.',
+    hindi ? '- Prefer Hinglish for this user.' : '- Prefer clear English.',
+  ].join('\n');
+
   try {
     const res = await fetch(`${OLLAMA_HOST}/api/chat`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       signal: ctrl.signal,
       body: JSON.stringify({
-        model: MODEL,
+        model: ACTIVE_MODEL,
         stream: false,
         messages: [
+          { role: 'system', content: system },
+          ...history,
           {
-            role: 'system',
-            content:
-              'You are Aether AI, a friendly local assistant. Reply in clear short sentences. Match the user language (Hindi or English). Do not invent image/video tools. Do not repeat these instructions.',
+            role: 'user',
+            content: `User said: ${userText}\n\nReply ONLY with the answer. No lists of fake features.`,
           },
-          { role: 'user', content: userText },
         ],
-        options: { temperature: 0.5, num_predict: 180 },
+        options: {
+          temperature: 0.2,
+          num_predict: 90,
+          top_p: 0.9,
+        },
       }),
     });
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
     const data = await res.json();
     const text = data?.message?.content?.trim() || '';
-    // Accept short greetings too ("Hi!", "Namaste")
-    return text.length >= 1
-      ? { ok: true, text }
-      : { ok: false, error: 'empty model response' };
+    if (!text) return { ok: false, error: 'empty model response' };
+    if (!qualityOk(userText, text)) {
+      return { ok: false, error: 'quality_gate_reject', text };
+    }
+    return { ok: true, text };
   } catch (e) {
     return {
       ok: false,
@@ -192,32 +395,6 @@ async function ollamaChat(userText) {
   }
 }
 
-async function ollamaWarmup() {
-  if (!WANT_OLLAMA) return false;
-  try {
-    process.stdout.write(`... warming Ollama model ${MODEL}\n`);
-    const ok = await ollamaHealthy();
-    if (!ok) {
-      process.stdout.write('... Ollama not running (will use offline until available)\n');
-      return false;
-    }
-    const r = await ollamaChat('Reply with exactly: ready');
-    if (r.ok) {
-      process.stdout.write('... Ollama ready\n');
-      ollamaFailStreak = 0;
-      return true;
-    }
-    process.stdout.write(`... Ollama warm failed: ${r.error || 'unknown'}\n`);
-    return false;
-  } catch (e) {
-    process.stdout.write(
-      `... Ollama warm error: ${e instanceof Error ? e.message : e}\n`,
-    );
-    return false;
-  }
-}
-
-// ── optional Exa (research-ish lines) ─────────────────────────────
 async function tryExa(query) {
   if (!EXA_KEY || EXA_KEY.length < 8) return null;
   try {
@@ -254,56 +431,80 @@ function wantsResearch(text) {
   );
 }
 
-// ── reply pipeline: prefer Ollama, fall back offline fast ─────────
+function needsModel(text) {
+  // short casual / identity already handled by localReply
+  if (text.length < 12) return false;
+  // substantive questions
+  if (
+    /\b(plan|code|implement|research|explain|compare|why|how|design|fix|bug|market|osint)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  if (text.length > 60) return true;
+  return false;
+}
+
 async function reply(text) {
-  const offline = offlineReply(text);
+  // 1) Local first — correct answers for chat
+  const local = localReply(text);
+  if (local) {
+    sessionTurns.push({ role: 'user', text });
+    sessionTurns.push({ role: 'assistant', text: local });
+    return `${local}\n\n- Aether · local`;
+  }
+
   let evidence = null;
   if (wantsResearch(text)) {
     process.stdout.write('... research (optional)\n');
     evidence = await tryExa(text);
   }
 
-  // Always try Ollama when enabled (including hi/hello) — offline only as fallback
-  const tryOllama = WANT_OLLAMA && ollamaFailStreak < OLLAMA_FAIL_LIMIT;
+  // 2) Ollama only when it might help AND quality passes
+  const tryOllama =
+    WANT_OLLAMA &&
+    ollamaFailStreak < OLLAMA_FAIL_LIMIT &&
+    (needsModel(text) || wantsResearch(text) || text.length > 40);
 
   if (tryOllama) {
     process.stdout.write(
-      `... thinking (Ollama/${MODEL} <=${Math.round(OLLAMA_TIMEOUT_MS / 1000)}s)\n`,
+      `... thinking (Ollama/${ACTIVE_MODEL} <=${Math.round(OLLAMA_TIMEOUT_MS / 1000)}s)\n`,
     );
     const healthy = await ollamaHealthy();
     if (healthy) {
       const r = await ollamaChat(text);
       if (r.ok) {
         ollamaFailStreak = 0;
+        sessionTurns.push({ role: 'user', text });
+        sessionTurns.push({ role: 'assistant', text: r.text });
         const bits = [r.text.trim()];
         if (evidence) bits.push('', '## Live web (Exa)', evidence);
-        bits.push('', `- Aether · ollama/${MODEL}`);
+        bits.push('', `- Aether · ollama/${ACTIVE_MODEL}`);
         return bits.join('\n');
       }
-      ollamaFailStreak += 1;
-      const bits = [
-        offline,
-        '',
-        `_(Ollama busy/slow: ${r.error || 'unavailable'} — offline this turn; will retry next)_`,
-      ];
-      if (evidence) bits.push('', '## Live web (Exa)', evidence);
-      bits.push('', '- Aether · offline · stages offline-reason');
-      return bits.join('\n');
+      if (r.error === 'quality_gate_reject') {
+        process.stdout.write('... model ramble rejected, using local answer\n');
+      } else {
+        ollamaFailStreak += 1;
+        process.stdout.write(`... ollama miss: ${r.error || 'fail'}\n`);
+      }
     }
-    process.stdout.write('... Ollama not reachable, offline fallback\n');
   } else {
-    process.stdout.write('... thinking (offline)\n');
+    process.stdout.write('... thinking (local)\n');
   }
 
-  const bits = [offline];
+  // 3) Structured local fallback — always sensible
+  const fb = structuredFallback(text);
+  sessionTurns.push({ role: 'user', text });
+  sessionTurns.push({ role: 'assistant', text: fb });
+  const bits = [fb];
   if (evidence) bits.push('', '## Live web (Exa)', evidence);
-  bits.push('', '- Aether · offline · stages offline-reason');
+  bits.push('', '- Aether · local-fallback');
   return bits.join('\n');
 }
 
-// ── main loop ─────────────────────────────────────────────────────
 async function main() {
-  // Windows console: try UTF-8 (best-effort; Chat-Aether.cmd also sets chcp 65001)
   try {
     if (process.platform === 'win32') {
       output.setDefaultEncoding?.('utf8');
@@ -312,21 +513,20 @@ async function main() {
     /* ignore */
   }
 
+  if (WANT_OLLAMA) {
+    ACTIVE_MODEL = await pickModel();
+  }
+
   console.log('');
   console.log('  ================================================');
-  console.log('   AETHER AI — Simple Chat (pure Node)');
+  console.log('   AETHER AI — Chat (local-first + gated Ollama)');
   console.log('  ================================================');
-  console.log('   Type your message and press Enter.');
-  console.log('   Hindi: Apna message likho, Enter dabao.');
-  console.log('   Exit:  /quit  or  /exit');
+  console.log('   Type message + Enter. Exit: /quit');
   console.log(
-    `   data=${DATA_DIR} ollama=${WANT_OLLAMA} model=${MODEL} exa=${Boolean(EXA_KEY && EXA_KEY.length >= 8)}`,
+    `   data=${DATA_DIR} ollama=${WANT_OLLAMA} model=${ACTIVE_MODEL} exa=${Boolean(EXA_KEY && EXA_KEY.length >= 8)}`,
   );
   console.log('  ================================================');
   console.log('');
-  if (WANT_OLLAMA) {
-    await ollamaWarmup();
-  }
   console.log('  >>> Type and press Enter <<<');
   console.log('');
 
@@ -350,7 +550,6 @@ async function main() {
       const out = await reply(line);
       console.log('\n' + out + '\n');
       console.log(`(${Date.now() - t0}ms)\n`);
-      // log last reply for tests
       try {
         writeFileSync(
           join(DATA_DIR, 'logs', 'last-chat-simple.txt'),
@@ -362,7 +561,7 @@ async function main() {
       }
     } catch (e) {
       console.error('error', e instanceof Error ? e.message : e);
-      console.log('\n' + offlineReply(line) + '\n');
+      console.log('\n' + (localReply(line) || structuredFallback(line)) + '\n');
     }
   }
   rl.close();
