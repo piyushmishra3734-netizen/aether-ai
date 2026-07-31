@@ -15,7 +15,7 @@
 
 | Key | Value |
 |-----|--------|
-| Model | `tinyllama:latest` (Ollama) |
+| Model | `qwen2.5:0.5b` (Ollama; tinyllama still installed) |
 | Autonomous | on |
 | Exa | configured |
 | Media gen | off |
