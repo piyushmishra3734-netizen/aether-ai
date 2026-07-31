@@ -122,7 +122,8 @@ const SCENARIOS: Scenario[] = [
 ];
 
 async function main() {
-  const cfg = loadConfig();
+  // Train gym is dry-run — keep Ollama free for interactive chat
+  const cfg = { ...loadConfig(), ollama: false };
   const results: Array<{
     id: string;
     passed: boolean;

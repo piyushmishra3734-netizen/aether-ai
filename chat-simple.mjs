@@ -13,11 +13,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const OLLAMA_TIMEOUT_MS = 25_000;
-const OLLAMA_HEALTH_MS = 3_000;
+const OLLAMA_TIMEOUT_MS = Number(process.env.AETHER_OLLAMA_TIMEOUT_MS || 60_000);
+const OLLAMA_HEALTH_MS = 5_000;
 const EXA_TIMEOUT_MS = 8_000;
-/** After one Ollama failure this session, stay offline (fast). */
-let ollamaDisabledThisSession = false;
+/** Only disable Ollama after many hard failures in a row. */
+let ollamaFailStreak = 0;
+const OLLAMA_FAIL_LIMIT = 3;
 
 // ── .env ──────────────────────────────────────────────────────────
 function loadDotEnv(file = join(ROOT, '.env')) {
@@ -177,7 +178,8 @@ async function ollamaChat(userText) {
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
     const data = await res.json();
     const text = data?.message?.content?.trim() || '';
-    return text.length > 20
+    // Accept short greetings too ("Hi!", "Namaste")
+    return text.length >= 1
       ? { ok: true, text }
       : { ok: false, error: 'empty model response' };
   } catch (e) {
@@ -187,6 +189,31 @@ async function ollamaChat(userText) {
     };
   } finally {
     clearTimeout(t);
+  }
+}
+
+async function ollamaWarmup() {
+  if (!WANT_OLLAMA) return false;
+  try {
+    process.stdout.write(`... warming Ollama model ${MODEL}\n`);
+    const ok = await ollamaHealthy();
+    if (!ok) {
+      process.stdout.write('... Ollama not running (will use offline until available)\n');
+      return false;
+    }
+    const r = await ollamaChat('Reply with exactly: ready');
+    if (r.ok) {
+      process.stdout.write('... Ollama ready\n');
+      ollamaFailStreak = 0;
+      return true;
+    }
+    process.stdout.write(`... Ollama warm failed: ${r.error || 'unknown'}\n`);
+    return false;
+  } catch (e) {
+    process.stdout.write(
+      `... Ollama warm error: ${e instanceof Error ? e.message : e}\n`,
+    );
+    return false;
   }
 }
 
@@ -237,32 +264,32 @@ async function reply(text) {
   }
 
   // Always try Ollama when enabled (including hi/hello) — offline only as fallback
-  const tryOllama = WANT_OLLAMA && !ollamaDisabledThisSession;
+  const tryOllama = WANT_OLLAMA && ollamaFailStreak < OLLAMA_FAIL_LIMIT;
 
   if (tryOllama) {
     process.stdout.write(
-      `... thinking (Ollama/${MODEL} <=${OLLAMA_TIMEOUT_MS / 1000}s)\n`,
+      `... thinking (Ollama/${MODEL} <=${Math.round(OLLAMA_TIMEOUT_MS / 1000)}s)\n`,
     );
     const healthy = await ollamaHealthy();
     if (healthy) {
       const r = await ollamaChat(text);
       if (r.ok) {
+        ollamaFailStreak = 0;
         const bits = [r.text.trim()];
         if (evidence) bits.push('', '## Live web (Exa)', evidence);
         bits.push('', `- Aether · ollama/${MODEL}`);
         return bits.join('\n');
       }
-      // one soft fail — do not kill whole session; offline this turn only
+      ollamaFailStreak += 1;
       const bits = [
         offline,
         '',
-        `_(Ollama this turn failed: ${r.error || 'unavailable'} — offline fallback)_`,
+        `_(Ollama busy/slow: ${r.error || 'unavailable'} — offline this turn; will retry next)_`,
       ];
       if (evidence) bits.push('', '## Live web (Exa)', evidence);
       bits.push('', '- Aether · offline · stages offline-reason');
       return bits.join('\n');
     }
-    // Ollama not reachable this turn — offline, keep trying later
     process.stdout.write('... Ollama not reachable, offline fallback\n');
   } else {
     process.stdout.write('... thinking (offline)\n');
@@ -297,6 +324,9 @@ async function main() {
   );
   console.log('  ================================================');
   console.log('');
+  if (WANT_OLLAMA) {
+    await ollamaWarmup();
+  }
   console.log('  >>> Type and press Enter <<<');
   console.log('');
 
