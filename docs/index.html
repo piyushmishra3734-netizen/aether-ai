@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Aether AI — Access Portal</title>
+  <meta name="description" content="Aether AI official web portal. Chat with local API, OSINT strategic briefs, open-source only." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✦</text></svg>" />
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #121a22;
+      --border: #243041;
+      --text: #e8eef6;
+      --muted: #8b9bb0;
+      --accent: #5b9fd4;
+      --accent2: #3d8b6e;
+      --danger: #c45c5c;
+      --user: #1a2836;
+      --bot: #152018;
+      --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+      --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--sans);
+      background: radial-gradient(1200px 600px at 10% -10%, #1a2a3a 0%, transparent 50%),
+                  radial-gradient(900px 500px at 100% 0%, #152820 0%, transparent 45%),
+                  var(--bg);
+      color: var(--text);
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(11, 15, 20, 0.85);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand h1 { margin: 0; font-size: 1.15rem; letter-spacing: 0.02em; }
+    .brand span { color: var(--muted); font-size: 0.8rem; display: block; }
+    .badge {
+      font-size: 0.7rem;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      background: var(--panel);
+    }
+    .badge.ok { color: #8fd4b0; border-color: #2a5a44; }
+    .badge.bad { color: #e0a0a0; border-color: #5a2a2a; }
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 16px 16px 40px;
+      display: grid;
+      gap: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 0.95rem;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    label { font-size: 0.75rem; color: var(--muted); }
+    input, select, button, textarea {
+      font: inherit;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      padding: 10px 12px;
+    }
+    input, select { min-width: 0; flex: 1; }
+    button {
+      background: linear-gradient(180deg, #3a6f9a, #2d5678);
+      border-color: #4a7eab;
+      cursor: pointer;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    button:hover { filter: brightness(1.08); }
+    button.secondary {
+      background: var(--bg);
+      border-color: var(--border);
+      font-weight: 500;
+      color: var(--muted);
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #log {
+      height: min(52vh, 480px);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 4px;
+    }
+    .msg {
+      max-width: 92%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+    .msg.user { align-self: flex-end; background: var(--user); }
+    .msg.bot { align-self: flex-start; background: var(--bot); }
+    .msg .meta {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-family: var(--mono);
+    }
+    #composer {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    #composer textarea {
+      min-height: 52px;
+      max-height: 140px;
+      resize: vertical;
+    }
+    .hint { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+    .hint code {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      background: var(--bg);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    a { color: var(--accent); }
+    ul.links { margin: 0; padding-left: 18px; color: var(--muted); font-size: 0.85rem; }
+    ul.links li { margin: 4px 0; }
+    footer {
+      text-align: center;
+      padding: 20px;
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+    .steps { font-size: 0.85rem; color: var(--muted); margin: 0; padding-left: 18px; }
+    .steps li { margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div>
+        <h1>✦ Aether AI</h1>
+        <span>Official access portal · open-source intelligence workstation</span>
+      </div>
+    </div>
+    <div class="row">
+      <span class="badge" id="healthBadge">API: checking…</span>
+      <span class="badge">scope: OPEN_SOURCE_ONLY</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Connect to your local Aether</h2>
+      <p class="hint">
+        This page is hosted on <strong>GitHub Pages</strong>. The AI brain runs on
+        <strong>your PC</strong> (API default <code>http://127.0.0.1:8788</code>).
+        Start API locally, then chat here.
+      </p>
+      <div class="row" style="margin-top:10px">
+        <div style="flex:2; min-width:200px">
+          <label for="apiBase">API base URL</label>
+          <input id="apiBase" value="http://127.0.0.1:8788" spellcheck="false" />
+        </div>
+        <div style="flex:1; min-width:120px">
+          <label for="token">Token (optional)</label>
+          <input id="token" type="password" placeholder="AETHER_TOKEN" />
+        </div>
+        <div style="flex:1; min-width:120px">
+          <label for="mode">Mode</label>
+          <select id="mode">
+            <option value="chat">chat</option>
+            <option value="auto">auto</option>
+            <option value="research">research</option>
+            <option value="osint">osint</option>
+            <option value="strategic">strategic</option>
+            <option value="forecast">forecast</option>
+            <option value="plan">plan</option>
+            <option value="decide">decide</option>
+            <option value="code">code</option>
+          </select>
+        </div>
+        <div style="align-self:flex-end">
+          <button type="button" class="secondary" id="btnHealth">Check health</button>
+        </div>
+      </div>
+      <ol class="steps" style="margin-top:12px">
+        <li>PC pe: <code>git clone</code> repo → <code>npm install</code> → <code>npm run build</code></li>
+        <li><code>npm run start:api</code> (port 8788)</li>
+        <li>Optional Ollama: model <code>qwen2.5:0.5b</code></li>
+        <li>Is page se message bhejo — browser local API ko call karega</li>
+      </ol>
+    </section>
+
+    <section class="card">
+      <h2>Chat</h2>
+      <div id="log" aria-live="polite"></div>
+      <div id="composer">
+        <textarea id="input" placeholder="Type here… Hindi / English. e.g. tera naam bta · OSINT strategic forecast…" rows="2"></textarea>
+        <button type="button" id="btnSend">Send</button>
+      </div>
+      <p class="hint" style="margin-top:8px">
+        Shortcuts: Enter = send · Shift+Enter = newline · Modes: strategic / forecast = Phase-2 OSINT briefs
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Links</h2>
+      <ul class="links">
+        <li><a href="https://github.com/piyushmishra3734-netizen/aether-ai" target="_blank" rel="noopener">GitHub repo</a></li>
+        <li><a href="https://github.com/piyushmishra3734-netizen/aether-ai/blob/main/SCOPE_OSINT.md" target="_blank" rel="noopener">SCOPE_OSINT.md</a> (open-source only)</li>
+        <li><a href="https://github.com/piyushmishra3734-netizen/aether-ai/blob/main/TRAINING_STATUS.md" target="_blank" rel="noopener">TRAINING_STATUS.md</a></li>
+        <li><a href="https://github.com/piyushmishra3734-netizen/aether-ai/blob/main/STATUS.md" target="_blank" rel="noopener">STATUS.md</a></li>
+        <li>Portal URL (bookmark): <a href="https://piyushmishra3734-netizen.github.io/aether-ai/">piyushmishra3734-netizen.github.io/aether-ai</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    Aether AI · not FounderOS · no media gen · no classified access · local-first
+  </footer>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const log = $('log');
+    const KEYS = { api: 'aether_api_base', token: 'aether_token', mode: 'aether_mode' };
+
+    // restore prefs
+    try {
+      const a = localStorage.getItem(KEYS.api);
+      const t = localStorage.getItem(KEYS.token);
+      const m = localStorage.getItem(KEYS.mode);
+      if (a) $('apiBase').value = a;
+      if (t) $('token').value = t;
+      if (m) $('mode').value = m;
+    } catch (_) {}
+
+    function savePrefs() {
+      try {
+        localStorage.setItem(KEYS.api, $('apiBase').value.trim());
+        localStorage.setItem(KEYS.token, $('token').value);
+        localStorage.setItem(KEYS.mode, $('mode').value);
+      } catch (_) {}
+    }
+
+    function addMsg(role, text, meta) {
+      const el = document.createElement('div');
+      el.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
+      if (meta) {
+        const m = document.createElement('div');
+        m.className = 'meta';
+        m.textContent = meta;
+        el.appendChild(m);
+      }
+      el.appendChild(document.createTextNode(text));
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function headers() {
+      const h = { 'content-type': 'application/json' };
+      const tok = $('token').value.trim();
+      if (tok) {
+        h['authorization'] = 'Bearer ' + tok;
+        h['x-aether-token'] = tok;
+      }
+      return h;
+    }
+
+    function base() {
+      return ($('apiBase').value || 'http://127.0.0.1:8788').replace(/\/$/, '');
+    }
+
+    async function checkHealth() {
+      const badge = $('healthBadge');
+      badge.textContent = 'API: checking…';
+      badge.className = 'badge';
+      savePrefs();
+      try {
+        const res = await fetch(base() + '/health', {
+          headers: headers(),
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const j = await res.json();
+        const model = j.model || '?';
+        const ollama = j.capabilities && j.capabilities.ollama;
+        badge.textContent = 'API: ok · ' + model + (ollama ? ' · ollama' : '');
+        badge.className = 'badge ok';
+        return true;
+      } catch (e) {
+        badge.textContent = 'API: offline — start npm run start:api';
+        badge.className = 'badge bad';
+        return false;
+      }
+    }
+
+    async function send() {
+      const text = $('input').value.trim();
+      if (!text) return;
+      savePrefs();
+      $('input').value = '';
+      addMsg('user', text);
+      $('btnSend').disabled = true;
+      try {
+        const res = await fetch(base() + '/v1/chat', {
+          method: 'POST',
+          headers: headers(),
+          body: JSON.stringify({
+            text,
+            mode: $('mode').value,
+            sessionId: sessionId,
+          }),
+          signal: AbortSignal.timeout(120000),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          addMsg('bot', j.error || ('Error HTTP ' + res.status), 'error');
+        } else {
+          const meta =
+            (j.intent && j.intent.kind ? j.intent.kind : '') +
+            ' · conf ' +
+            (j.confidence != null ? Number(j.confidence).toFixed(2) : '?') +
+            ' · ' +
+            (j.backend || '') +
+            (j.durationMs != null ? ' · ' + j.durationMs + 'ms' : '');
+          addMsg('bot', j.response || JSON.stringify(j, null, 2), meta);
+        }
+      } catch (e) {
+        addMsg(
+          'bot',
+          'Could not reach API.\n\n1) PC pe: npm run start:api\n2) API URL check: ' +
+            base() +
+            '\n3) CORS enabled on server (latest Aether)\n\n' +
+            (e && e.message ? e.message : e),
+          'offline',
+        );
+      } finally {
+        $('btnSend').disabled = false;
+        $('input').focus();
+      }
+    }
+
+    const sessionId = 'web_' + Math.random().toString(16).slice(2) + Date.now().toString(16);
+
+    $('btnHealth').addEventListener('click', checkHealth);
+    $('btnSend').addEventListener('click', send);
+    $('input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        send();
+      }
+    });
+
+    addMsg(
+      'bot',
+      'Aether AI web portal.\n\nLocal API start karo, phir yahan se baat karo.\nModes: chat · research · osint · strategic · forecast.\nOPEN SOURCE ONLY — no classified access.',
+      'portal',
+    );
+    checkHealth();
+  </script>
+</body>
+</html>

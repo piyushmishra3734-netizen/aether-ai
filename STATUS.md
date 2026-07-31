@@ -2,11 +2,18 @@
 
 **Readiness: G1_grok_aligned / continuous train** (40/40 multi-part gym + strategic OSINT Phase-2)
 
+## Official web portal (bookmark)
+
+**https://piyushmishra3734-netizen.github.io/aether-ai/**
+
+Browser UI on GitHub Pages → talks to local API `http://127.0.0.1:8788` (CORS enabled).
+
 ## Paths
 
 | Item | Path |
 |------|------|
-| Code | `E:\FounderOS\source\aether-ai` |
+| Web portal | https://piyushmishra3734-netizen.github.io/aether-ai/ |
+| Code | `E:\FounderOS\source\aether-ai` / `E:\AetherAI-run` |
 | Data | `E:\AetherAI\data` |
 | API | `http://127.0.0.1:8788` |
 | Train stop | `E:\AetherAI\data\training\STOP` |

@@ -13,6 +13,30 @@ import { z } from 'zod';
 const cfg = loadConfig();
 const app = new Hono();
 
+/** CORS so GitHub Pages portal can call local API from browser */
+app.use('*', async (c, next) => {
+  const origin = c.req.header('origin') || '*';
+  const allow =
+    origin === 'null' ||
+    origin.includes('github.io') ||
+    origin.includes('127.0.0.1') ||
+    origin.includes('localhost') ||
+    origin === '*'
+      ? origin === 'null'
+        ? '*'
+        : origin
+      : 'https://piyushmishra3734-netizen.github.io';
+  c.header('access-control-allow-origin', allow);
+  c.header('access-control-allow-methods', 'GET,POST,OPTIONS');
+  c.header(
+    'access-control-allow-headers',
+    'content-type, authorization, x-aether-token',
+  );
+  c.header('access-control-max-age', '86400');
+  if (c.req.method === 'OPTIONS') return c.body(null, 204);
+  return next();
+});
+
 app.use('*', async (c, next) => {
   if (c.req.path === '/health' || c.req.path === '/ready') return next();
   if (!cfg.token) return next();

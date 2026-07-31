@@ -4,6 +4,16 @@ Independent text reasoning agent — **not** FounderOS / FounderAI.
 
 Public repo: https://github.com/piyushmishra3734-netizen/aether-ai
 
+## Official web portal
+
+**https://piyushmishra3734-netizen.github.io/aether-ai/**
+
+1. PC pe API chalao: `npm run start:api`
+2. Browser me portal kholo
+3. Chat / strategic / forecast modes wahan se
+
+(Portal = GitHub Pages UI · Brain = local API on `:8788`)
+
 ## Quick start (from GitHub)
 
 ```powershell
