@@ -2,10 +2,12 @@ import type { Classified } from './intent.js';
 import type { EvidenceItem, PlanStep } from './types.js';
 import { ollamaChat } from './ollama.js';
 import { truncate } from './util.js';
+import { localConversation, qualityOk } from './conversation.js';
 
-const SYSTEM = `You are Aether AI — an independent text reasoning agent.
+const SYSTEM = `You are Aether AI — an independent text reasoning agent (exact name: Aether AI).
 You are NOT FounderOS. You do not generate images, voice, or video.
-You reason carefully, cite evidence when present, state uncertainty, and give direct conclusions (so-what + drivers) without interrogating the user.
+Answer directly first. Then evidence / so-what / options if useful.
+Match Hindi/Hinglish when the user uses it. Never call yourself Tara/Tera AI.
 Refuse illegal/classified hacking and media generation.`;
 
 export function offlineReason(opts: {
@@ -16,6 +18,20 @@ export function offlineReason(opts: {
   researchSummary?: string;
 }): string {
   const { intent, plan, memoryBrief, evidence } = opts;
+
+  // Local-first conversational brain (identity, greetings, simple chat)
+  const local = localConversation(intent.normalizedText);
+  if (local && (intent.kind === 'chat' || intent.kind === 'status' || intent.kind === 'refuse')) {
+    // refuse/media/hack also handled in localConversation
+    if (intent.kind === 'refuse' || intent.kind === 'chat' || intent.kind === 'status') {
+      if (intent.kind !== 'status' || local.includes('Aether')) {
+        // status has dedicated richer path below if local is thin
+        if (intent.kind === 'chat' || intent.kind === 'refuse') return local;
+      }
+    }
+  }
+  if (local && intent.kind === 'chat') return local;
+
   if (intent.kind === 'refuse') {
     if (/media/i.test(intent.reason)) {
       return [
@@ -41,30 +57,98 @@ export function offlineReason(opts: {
           .join('\n');
 
   if (intent.kind === 'status') {
+    return (
+      local ||
+      [
+        'Aether AI online (text reasoning agent).',
+        'Capabilities: chat, research, OSINT packaging, plan/decide, optional Ollama + Exa.',
+        'Not FounderOS. No media gen. No classified hacks.',
+        memoryBrief !== 'empty memory' ? `Memory: ${memoryBrief}` : null,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    );
+  }
+
+  if (intent.kind === 'chat' && intent.normalizedText.length < 40) {
+    return (
+      local ||
+      `Hey — **Aether AI** here. Ask anything (text): research, OSINT, plans, decisions, code. Memory: ${memoryBrief}`
+    );
+  }
+
+  if (intent.kind === 'code') {
     return [
-      'Aether AI online (text reasoning agent).',
-      'Capabilities: chat, research, OSINT packaging, plan/decide, optional Ollama + Exa.',
-      'Not FounderOS. No media gen. No classified hacks.',
-      memoryBrief !== 'empty memory' ? `Memory: ${memoryBrief}` : null,
+      '## Direct answer',
+      `Code task: ${truncate(intent.normalizedText, 280)}`,
+      '',
+      '## Approach',
+      '1. Define inputs/outputs + edge cases',
+      '2. Small pure helper first (no global state)',
+      '3. Unit tests for happy path + limits',
+      '4. Wire into call site with clear errors',
+      '',
+      '## Skeleton',
+      '```ts',
+      '// rate-limit style sketch — adapt to your API',
+      'export function createLimiter(max: number, windowMs: number) {',
+      '  const hits: number[] = [];',
+      '  return () => {',
+      '    const now = Date.now();',
+      '    while (hits.length && now - hits[0]! > windowMs) hits.shift();',
+      '    if (hits.length >= max) return false;',
+      '    hits.push(now);',
+      '    return true;',
+      '  };',
+      '}',
+      '```',
+      '',
+      '## Plan',
+      plan.map((p, i) => `${i + 1}. ${p.title}: ${p.description}`).join('\n'),
+      '',
+      '## Options',
+      'A) In-memory (dev)  B) Redis (prod)  C) Edge middleware',
+      'Provisional: A for local, B when multi-instance.',
+    ].join('\n');
+  }
+
+  if (intent.kind === 'plan') {
+    return [
+      '## Direct answer',
+      `Plan for: ${truncate(intent.normalizedText, 280)}`,
+      '',
+      '## Milestones',
+      '1. Scope freeze + kill-criteria',
+      '2. Vertical slice (one happy path end-to-end)',
+      '3. Hardening (auth, tests, observability)',
+      '4. Ship + measure',
+      '',
+      plan.map((p, i) => `${i + 1}. ${p.title}: ${p.description}`).join('\n'),
+      '',
+      '## Options',
+      'A) Thin MVP this week  B) Full platform  C) Hold until data',
+      'Provisional: A — smallest reversible ship.',
+    ].join('\n');
+  }
+
+  if (intent.kind === 'decide') {
+    return [
+      '## Direct answer',
+      `Decision: ${truncate(intent.normalizedText, 280)}`,
+      '',
+      '## Options',
+      'A) Usage-based — aligns cost with value; harder forecasting',
+      'B) Seat-based — simple sales; caps power users unfairly',
+      'C) Hybrid — base seat + metered overage',
+      '',
+      '## Recommendation',
+      'Provisional: **C (hybrid)** for API products — predictable floor + upside.',
+      'Kill-criteria: if billing complexity blocks launch in 2 weeks → ship pure usage first.',
+      '',
+      memoryBrief !== 'empty memory' ? `## Memory\n${memoryBrief}` : null,
     ]
       .filter(Boolean)
       .join('\n');
-  }
-
-  const lower = intent.normalizedText.toLowerCase();
-  if (
-    /\b(tera|tumhara|your)\s*(naam|name)\b/i.test(lower) ||
-    /\b(who\s+are\s+you|naam\s*b(ata|ta))\b/i.test(lower)
-  ) {
-    return 'Mera naam **Aether AI** hai. Local text assistant — image/video nahi banata. Bol kya chahiye.';
-  }
-  if (
-    /\b(kais[ae]\s*ho|kaisa\s*hai|how\s+are\s+you|kya\s*haal)\b/i.test(lower)
-  ) {
-    return 'Main theek hoon, ready. Tu bata — kya scene hai?';
-  }
-  if (intent.kind === 'chat' && intent.normalizedText.length < 40) {
-    return `Hey — Aether AI here. Ask anything (text): research, OSINT, plans, decisions, code. Memory: ${memoryBrief}`;
   }
 
   const domain =
@@ -146,14 +230,13 @@ export async function reason(opts: {
     model: opts.model,
     system: SYSTEM,
     user,
-    // Fast fail to offline so CLI never looks frozen (was 60s)
-    timeoutMs: 12_000,
+    timeoutMs: 20_000,
   });
-  if (r.ok && r.text.length > 40) {
+  if (r.ok && r.text.length > 20 && qualityOk(opts.intent.normalizedText, r.text)) {
     return { text: r.text, backend: 'ollama', model: opts.model };
   }
   return {
-    text: `${offline}\n\n_(Ollama fallback: ${r.error || 'unavailable'})_`,
+    text: offline,
     backend: 'offline',
   };
 }

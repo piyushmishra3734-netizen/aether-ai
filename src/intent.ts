@@ -27,8 +27,13 @@ export function classify(text: string, mode: Mode = 'auto'): Classified {
   }
 
   if (
-    /\b(generat(e|ing)|creat(e|ing)|make|render)\b/i.test(body) &&
-    /\b(image|video|voice|audio|mp4|png|photo)\b/i.test(body)
+    (/\b(generat(e|ing)|creat(e|ing)|make|render|bana|banao|banade|bana\s*de)\b/i.test(
+      body,
+    ) &&
+      /\b(image|video|voice|audio|mp4|png|photo|pic|picture|tasveer)\b/i.test(
+        body,
+      )) ||
+    /\b(photo|image|video)\s+(bana|generate|create|draw)\b/i.test(body)
   ) {
     return {
       kind: 'refuse',
