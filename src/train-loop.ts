@@ -91,6 +91,16 @@ async function main() {
       `CYCLE_${cycle} exit=${code} level=${latest.level} rate=${(rate * 100).toFixed(1)}% weak=${(latest.weakParts || []).join('|') || 'none'} streak=${consecutiveFull}`,
     );
 
+    // Push training status snapshot to GitHub every N cycles (default 5)
+    const pushEvery = Number(process.env.AETHER_PUSH_EVERY || 5);
+    if (pushEvery > 0 && cycle % pushEvery === 0) {
+      L(`CYCLE_${cycle} github push (TRAINING_STATUS)`);
+      await run('node', [
+        'scripts/push-github.mjs',
+        `train: cycle ${cycle} ${latest.level || ''} ${(rate * 100).toFixed(0)}%`,
+      ]);
+    }
+
     // keep training forever until STOP (user order) — even when green, re-verify
     await new Promise((r) => setTimeout(r, INTERVAL_MS));
   }

@@ -73,6 +73,18 @@ Default data dir: `E:/AetherAI/data` (or set `AETHER_DATA_DIR`)
 
 See `STATUS.md`. Train gym target: **A1_ready** (10/10 scenarios).
 
+## GitHub push
+
+Standing order: keep pushing improvements + training status.
+
+```powershell
+npm run push
+# or:
+node scripts/push-github.mjs "your message"
+```
+
+`train:loop` also auto-pushes `TRAINING_STATUS.md` every 5 cycles (`AETHER_PUSH_EVERY=5`).
+
 ## Dropped
 
 FounderOS product plan — see `PLAN_DROP_FOUNDEROS.md`

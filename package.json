@@ -14,7 +14,8 @@
     "chat:full": "tsx src/cli-chat.ts",
     "say": "tsx scripts/say.ts",
     "train": "tsx src/train.ts",
-    "train:loop": "tsx src/train-loop.ts"
+    "train:loop": "tsx src/train-loop.ts",
+    "push": "node scripts/push-github.mjs"
   },
   "engines": {
     "node": ">=20"
