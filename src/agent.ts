@@ -8,6 +8,10 @@ import {
 } from './memory.js';
 import { collectEvidence } from './research.js';
 import { reason } from './reason.js';
+import {
+  buildStrategicAssessment,
+  renderStrategicBrief,
+} from './strategic.js';
 import type { AetherRequest, AetherResult, Mode, PlanStep } from './types.js';
 import { clamp01, nowIso, truncate, uid, writeJsonFile } from './util.js';
 import { join } from 'node:path';
@@ -28,13 +32,19 @@ function planFor(kind: string, text: string, needsResearch: boolean): PlanStep[]
       description: 'Load long-term notes and last goals',
     },
   ];
-  if (needsResearch || kind === 'research' || kind === 'osint') {
+  if (
+    needsResearch ||
+    kind === 'research' ||
+    kind === 'osint' ||
+    kind === 'strategic' ||
+    kind === 'forecast'
+  ) {
     steps.push(
       {
         id: uid('step'),
         title: 'Collect',
         kind: 'research',
-        description: 'Multi-angle live web (Exa) when configured',
+        description: 'Multi-angle open-source collection (Exa when configured)',
       },
       {
         id: uid('step'),
@@ -43,6 +53,15 @@ function planFor(kind: string, text: string, needsResearch: boolean): PlanStep[]
         description: 'Evidence → so-what → drivers → options',
       },
     );
+  }
+  if (kind === 'strategic' || kind === 'forecast' || kind === 'osint') {
+    steps.push({
+      id: uid('step'),
+      title: 'Strategic layer',
+      kind: 'strategic',
+      description:
+        'ACH hypotheses · intention · forecasts · indicators (OPEN SOURCE ONLY)',
+    });
   }
   if (kind === 'plan') {
     steps.push({
@@ -120,40 +139,75 @@ export async function runAether(
   }
 
   stages.push('reason');
-  const ollamaOn =
-    cfg.ollama && intent.kind !== 'refuse'
-      ? await ollamaHealthy(cfg.ollamaHost)
-      : false;
+  const strategicKinds = new Set(['osint', 'strategic', 'forecast']);
+  const useStrategic = strategicKinds.has(intent.kind);
 
-  const reasoned = await reason({
-    intent,
-    plan,
-    memoryBrief: mem,
-    evidence,
-    ...(researchSummary ? { researchSummary } : {}),
-    useOllama: ollamaOn,
-    ollamaHost: cfg.ollamaHost,
-    model: cfg.model,
-  });
+  let response: string;
+  let conf: number;
+  let factors: string[];
+  let backend: 'ollama' | 'offline' = 'offline';
+  let model: string | undefined;
 
-  let conf = 0.45 + intent.confidence * 0.25;
-  if (evidence.length >= 3) conf += 0.15;
-  if (evidence.length === 0 && intent.needsResearch && !dryRun) conf -= 0.1;
-  if (reasoned.backend === 'ollama') conf += 0.08;
-  if (intent.kind === 'refuse') conf = 0.9;
-  conf = clamp01(conf);
-  const factors = [
-    `intent ${intent.confidence.toFixed(2)}`,
-    `evidence n=${evidence.length}`,
-    `backend ${reasoned.backend}`,
-    dryRun ? 'dryRun' : 'live',
-    autonomous ? 'autonomous' : 'interactive',
-  ];
+  if (useStrategic) {
+    stages.push('strategic');
+    const assessment = buildStrategicAssessment({
+      query: intent.normalizedText,
+      evidence,
+      ...(researchSummary ? { researchSummary } : {}),
+    });
+    response = renderStrategicBrief(assessment);
+    conf = assessment.confidence;
+    factors = assessment.confidenceFactors;
+    backend = 'offline';
 
-  const response = [
-    reasoned.text.trim(),
+    // persist strategic assessment always (even dry-run) for train feedback
+    const sid = assessment.id;
+    writeJsonFile(join(cfg.dataDir, 'missions', `${sid}-strategic.json`), {
+      ...assessment,
+      runId,
+      sessionId,
+      dryRun,
+      createdAt: nowIso(),
+    });
+  } else {
+    const ollamaOn =
+      cfg.ollama && intent.kind !== 'refuse'
+        ? await ollamaHealthy(cfg.ollamaHost)
+        : false;
+
+    const reasoned = await reason({
+      intent,
+      plan,
+      memoryBrief: mem,
+      evidence,
+      ...(researchSummary ? { researchSummary } : {}),
+      useOllama: ollamaOn,
+      ollamaHost: cfg.ollamaHost,
+      model: cfg.model,
+    });
+
+    conf = 0.45 + intent.confidence * 0.25;
+    if (evidence.length >= 3) conf += 0.15;
+    if (evidence.length === 0 && intent.needsResearch && !dryRun) conf -= 0.1;
+    if (reasoned.backend === 'ollama') conf += 0.08;
+    if (intent.kind === 'refuse') conf = 0.9;
+    conf = clamp01(conf);
+    factors = [
+      `intent ${intent.confidence.toFixed(2)}`,
+      `evidence n=${evidence.length}`,
+      `backend ${reasoned.backend}`,
+      dryRun ? 'dryRun' : 'live',
+      autonomous ? 'autonomous' : 'interactive',
+    ];
+    response = reasoned.text.trim();
+    backend = reasoned.backend;
+    if (reasoned.model) model = reasoned.model;
+  }
+
+  response = [
+    response,
     '',
-    `— Aether · conf ${conf.toFixed(2)} · ${reasoned.backend}${reasoned.model ? `/${reasoned.model}` : ''} · stages ${stages.join('→')}`,
+    `— Aether · conf ${conf.toFixed(2)} · ${backend}${model ? `/${model}` : ''} · stages ${stages.join('→')}`,
   ].join('\n');
 
   if (intent.kind === 'decide' && conf >= 0.45) {
@@ -165,7 +219,10 @@ export async function runAether(
 
   if (
     !dryRun &&
-    (intent.kind === 'osint' || intent.kind === 'research') &&
+    (intent.kind === 'osint' ||
+      intent.kind === 'research' ||
+      intent.kind === 'strategic' ||
+      intent.kind === 'forecast') &&
     evidence.length >= 2
   ) {
     const mid = uid('mission');
@@ -213,8 +270,8 @@ export async function runAether(
     evidence,
     stages,
     durationMs: Date.now() - t0,
-    backend: reasoned.backend,
+    backend,
   };
-  if (reasoned.model) result.model = reasoned.model;
+  if (model) result.model = model;
   return result;
 }

@@ -3,6 +3,8 @@ export type Mode =
   | 'chat'
   | 'research'
   | 'osint'
+  | 'strategic'
+  | 'forecast'
   | 'plan'
   | 'decide'
   | 'code';
@@ -11,6 +13,8 @@ export type IntentKind =
   | 'chat'
   | 'research'
   | 'osint'
+  | 'strategic'
+  | 'forecast'
   | 'plan'
   | 'decide'
   | 'code'

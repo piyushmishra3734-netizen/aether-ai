@@ -1,6 +1,6 @@
 # Aether AI — live status
 
-**Readiness: G1_grok_aligned / continuous train** (35/35 multi-part gym)
+**Readiness: G1_grok_aligned / continuous train** (40/40 multi-part gym + strategic OSINT Phase-2)
 
 ## Paths
 
@@ -51,7 +51,8 @@ npm.cmd run train
 ## Scope
 
 - Independent of FounderOS Core  
-- Text reasoning + research/OSINT + plan/decide  
-- No image/voice/video · no classified access  
+- Text reasoning + research/OSINT + **strategic intention/forecast** (open-source only)  
+- No image/voice/video · no classified access · no agency secret systems  
+- See `SCOPE_OSINT.md` — Phase-1 NK coastal OSINT; Phase-2 think-tank methods  
 
 FounderOS plan dropped — see `PLAN_DROP_FOUNDEROS.md`.

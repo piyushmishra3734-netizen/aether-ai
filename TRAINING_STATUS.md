@@ -1,9 +1,9 @@
 # Aether training status
 
-- **Updated:** 2026-07-31T15:00:13.460Z
+- **Updated:** 2026-07-31T15:02:48.992Z
 - **Level:** G1_grok_aligned
-- **Pass:** 35/35 (100.0%)
-- **Mean conf:** 0.757
+- **Pass:** 40/40 (100.0%)
+- **Mean conf:** 0.728
 - **Weak parts:** none
 - **Failed:** none
 

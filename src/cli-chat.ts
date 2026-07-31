@@ -17,8 +17,16 @@ async function main() {
     `  data=${cfg.dataDir} ollama=${cfg.ollama} model=${cfg.model} exa=${Boolean(cfg.exaKey)}`,
   );
   console.log('');
-  let mode: 'auto' | 'chat' | 'research' | 'osint' | 'plan' | 'decide' | 'code' =
-    'chat';
+  let mode:
+    | 'auto'
+    | 'chat'
+    | 'research'
+    | 'osint'
+    | 'strategic'
+    | 'forecast'
+    | 'plan'
+    | 'decide'
+    | 'code' = 'chat';
   const sessionId = `cli_${Date.now().toString(16)}`;
 
   while (true) {
@@ -36,12 +44,26 @@ async function main() {
     if (line === '/quit' || line === '/exit') break;
     if (line.startsWith('/')) {
       const m = line.slice(1).toLowerCase();
-      if (['auto', 'chat', 'research', 'osint', 'plan', 'decide', 'code'].includes(m)) {
+      if (
+        [
+          'auto',
+          'chat',
+          'research',
+          'osint',
+          'strategic',
+          'forecast',
+          'plan',
+          'decide',
+          'code',
+        ].includes(m)
+      ) {
         mode = m as typeof mode;
         console.log('mode=', mode);
         continue;
       }
-      console.log('Unknown command. Modes: /chat /research /osint /plan /decide /code /auto · /quit');
+      console.log(
+        'Modes: /chat /research /osint /strategic /forecast /plan /decide /code /auto · /quit',
+      );
       continue;
     }
     try {

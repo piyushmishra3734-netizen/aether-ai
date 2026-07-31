@@ -37,11 +37,16 @@ app.get('/health', async (c) => {
       exa: Boolean(cfg.exaKey),
       research: true,
       osint: true,
+      strategicOsint: true,
+      intentionAnalysis: true,
+      forecasting: true,
       training: true,
       imageGeneration: false,
       voiceGeneration: false,
       videoGeneration: false,
       classifiedAccess: false,
+      agencySecretSystems: false,
+      scope: 'OPEN_SOURCE_ONLY',
     },
     autonomous: cfg.autonomous,
     model: cfg.model,
@@ -65,7 +70,17 @@ app.get('/ready', (c) => {
 const chatBody = z.object({
   text: z.string().min(1).max(12000),
   mode: z
-    .enum(['auto', 'chat', 'research', 'osint', 'plan', 'decide', 'code'])
+    .enum([
+      'auto',
+      'chat',
+      'research',
+      'osint',
+      'strategic',
+      'forecast',
+      'plan',
+      'decide',
+      'code',
+    ])
     .optional(),
   sessionId: z.string().optional(),
   dryRun: z.boolean().optional(),

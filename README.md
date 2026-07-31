@@ -63,9 +63,25 @@ Default data dir: `E:/AetherAI/data` (or set `AETHER_DATA_DIR`)
 - Optional: [Ollama](https://ollama.com) for local LLM
 - Optional: [Exa](https://exa.ai) API key for live web
 
+## Strategic OSINT (Phase-2)
+
+NK coastal multi-source packaging was **Phase-1**. Phase-2 adds think-tank methods on **open sources only**:
+
+- Competing hypotheses (ACH-style)
+- Intention assessment
+- Forecasts (7d / 30d / 90d) with kill-criteria
+- Indicators to watch
+
+```powershell
+npm run chat:full
+# modes: /osint  /strategic  /forecast
+```
+
+Hard boundary: **OPEN SOURCE ONLY** — no CIA/ISRO secret systems, no classified hacks. See `SCOPE_OSINT.md`.
+
 ## Scope
 
-- Text reasoning, research/OSINT packaging, plan/decide, train gym
+- Text reasoning, research/OSINT packaging, plan/decide, strategic forecast, train gym
 - **No** image / voice / video generation
 - **No** illegal or classified access
 

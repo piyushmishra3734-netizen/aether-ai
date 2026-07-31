@@ -49,6 +49,8 @@ export function classify(text: string, mode: Mode = 'auto'): Classified {
       chat: 'chat',
       research: 'research',
       osint: 'osint',
+      strategic: 'strategic',
+      forecast: 'forecast',
       plan: 'plan',
       decide: 'decide',
       code: 'code',
@@ -58,7 +60,11 @@ export function classify(text: string, mode: Mode = 'auto'): Classified {
       kind,
       confidence: 0.99,
       reason: `mode=${mode}`,
-      needsResearch: kind === 'research' || kind === 'osint',
+      needsResearch:
+        kind === 'research' ||
+        kind === 'osint' ||
+        kind === 'strategic' ||
+        kind === 'forecast',
       normalizedText: body,
     };
   }
@@ -79,6 +85,34 @@ export function classify(text: string, mode: Mode = 'auto'): Classified {
       confidence: 0.85,
       reason: 'status',
       needsResearch: false,
+      normalizedText: body,
+    };
+  }
+
+  if (
+    /\b(forecast|predict|prediction|intention analysis|intent assessment|competing hypothes|think[- ]tank|indicators?\s+and\s+warnings|future scenario)\b/i.test(
+      lower,
+    )
+  ) {
+    return {
+      kind: 'forecast',
+      confidence: 0.9,
+      reason: 'forecast/intent signals',
+      needsResearch: true,
+      normalizedText: body,
+    };
+  }
+
+  if (
+    /\b(strategic|ach analysis|key judgments|executive brief|geopolit)\b/i.test(
+      lower,
+    )
+  ) {
+    return {
+      kind: 'strategic',
+      confidence: 0.88,
+      reason: 'strategic analysis signals',
+      needsResearch: true,
       normalizedText: body,
     };
   }

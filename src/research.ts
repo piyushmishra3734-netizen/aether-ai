@@ -23,6 +23,14 @@ function expandAngles(query: string, heavy: boolean): string[] {
     angles.push(
       `maritime shipping sanctions AIS ${start}`,
       `coastal ports Wonsan Nampo activity ${end}`,
+      `DPRK coastal infrastructure open source imagery analysis ${end}`,
+      `north korea maritime gray zone ship to ship transfer ${start}`,
+    );
+  }
+  if (/\b(forecast|intent|predict|strategic|scenario)\b/i.test(query)) {
+    angles.push(
+      `${truncate(query, 100)} expert analysis outlook ${end}`,
+      `${truncate(query, 100)} indicators warnings open source ${start}`,
     );
   }
   if (/\b(market|saas|competitor|cofounder|agent)\b/i.test(query)) {
@@ -31,7 +39,7 @@ function expandAngles(query: string, heavy: boolean): string[] {
       `startup competitors landscape ${end}`,
     );
   }
-  return [...new Set(angles)].slice(0, 6);
+  return [...new Set(angles)].slice(0, 8);
 }
 
 export async function collectEvidence(opts: {
